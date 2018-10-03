@@ -89,9 +89,9 @@ class App:
 		# create the table if it doesn't exist
 		sql = """
 		CREATE TABLE IF NOT EXISTS "data"(
-			`hold_id` INTEGER PRIMARY KEY,
+			`hold_id` INTEGER,
 			`local_hold_id` INTEGER,
-			`hash_row` TEXT UNIQUE, -- so we can track changes made to the row
+			`hash_row` TEXT UNIQUE PRIMARY KEY, -- so we can track changes made to the row
 			`placed_epoch` INTEGER,
 			`patron_record_id` INTEGER,
 			`patron_record_num` INTEGER,
