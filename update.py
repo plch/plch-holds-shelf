@@ -90,7 +90,7 @@ class App:
 		sql = """
 		CREATE TABLE IF NOT EXISTS "data"(
 			`hold_id` INTEGER PRIMARY KEY,
-			`local_hold_id` INTEGER UNIQUE,
+			`local_hold_id` INTEGER,
 			`hash_row` TEXT UNIQUE, -- so we can track changes made to the row
 			`placed_epoch` INTEGER,
 			`patron_record_id` INTEGER,
@@ -306,23 +306,6 @@ class App:
 				print(row)
 			else:
 				pass
-
-
-	# we can use this to test what we just fed to the temp table
-	def query_remote_temp_ids_table(self):
-		print('in query_remote_temp_ids_table function')
-		with self.pgsql_conn as conn:
-			with conn.cursor() as cursor:
-				# cursor.execute('SELECT * FROM temp_local_hold_ids;')
-				cursor.execute('SELECT * FROM temp_hold_ready as t limit 100;')
-				print('selected from temp_local_hold_ids table')
-				for row in cursor:
-					print('{}'.format(row))
-
-		cursor = None
-		conn = None
-
-
 
 
 #~ run the app!
