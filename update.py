@@ -91,6 +91,7 @@ class App:
 		CREATE TABLE IF NOT EXISTS "data"(
 			`hold_id` INTEGER PRIMARY KEY,
 			`local_hold_id` INTEGER UNIQUE,
+			`hash_row` TEXT UNIQUE, -- so we can track changes made to the row
 			`placed_epoch` INTEGER,
 			`patron_record_id` INTEGER,
 			`patron_record_num` INTEGER,
@@ -137,6 +138,7 @@ class App:
 		h.id as hold_id,
 		-- if we ever reset or rollover our IDs ... might want to be prepared for that
 		(EXTRACT(EPOCH FROM h.placed_gmt)::INTEGER::TEXT || h.id::TEXT)::BIGINT as local_hold_id,
+		MD5(CAST((h.*)AS text)) as hash_row, -- this will hash the entire hold row
 		EXTRACT(EPOCH FROM h.placed_gmt)::INTEGER AS placed_epoch,
 		h.patron_record_id,
 		pr.record_num AS patron_record_num,
@@ -144,17 +146,17 @@ class App:
 		r.record_type_code,
 		r.record_num,
 		CASE
-		WHEN r.record_type_code = 'i' THEN (
-		SELECT
-		i.location_code
+			WHEN r.record_type_code = 'i' THEN (
+				SELECT
+				i.location_code
 
-		FROM
-		sierra_view.item_record as i
+				FROM
+				sierra_view.item_record as i
 
-		WHERE
-		i.record_id = r.id
-		)
-		ELSE NULL
+				WHERE
+				i.record_id = r.id
+			)
+			ELSE NULL
 		END AS item_record_location_code,
 		h.is_frozen::INTEGER,
 		h.delay_days,
@@ -168,7 +170,8 @@ class App:
 		h.ir_print_name,
 		h.is_ir_converted_request::INTEGER,
 		h.patron_records_display_order,
-		h.records_display_order
+		h.records_display_order,
+		EXTRACT(EPOCH FROM NOW())::INTEGER as modified_epoch
 
 		FROM
 		sierra_view.hold AS h
@@ -233,26 +236,28 @@ class App:
 		INSERT OR IGNORE INTO data (
 			hold_id,	-- 1
 			local_hold_id,	--2
-			placed_epoch,	--3
-			patron_record_id,	--4
-			patron_record_num,	--5
-			record_id,	--6
-			record_type_code,	--7
-			record_num,	--8
-			item_record_location_code,	--9
-			is_frozen,	--10
-			delay_days,	--11
-			expires_epoch,	--12
-			status,	--13
-			is_ir,	--14
-			pickup_location_code,	--15
-			is_ill,	--16
-			note,	--17
-			ir_pickup_location_code,	--18
-			ir_print_name,	--19
-			is_ir_converted_request,	--20
-			patron_records_display_order,	--21
-			records_display_order	--22
+			hash_row, --3
+			placed_epoch,	--4
+			patron_record_id,	--5
+			patron_record_num,	--6
+			record_id,	--7
+			record_type_code,	--8
+			record_num,	--9
+			item_record_location_code,	--10
+			is_frozen,	--11
+			delay_days,	--12
+			expires_epoch,	--13
+			status,	--14
+			is_ir,	--15
+			pickup_location_code,	--16
+			is_ill,	--17
+			note,	--18
+			ir_pickup_location_code,	--19
+			ir_print_name,	--20
+			is_ir_converted_request,	--21
+			patron_records_display_order,	--22
+			records_display_order,	--23
+			modified_epoch	--24
 		)
 
 		VALUES
@@ -278,7 +283,10 @@ class App:
 			?,	--19
 			?,	--20
 			?,	--21
-			?	--22
+			?,	--22
+			?,	--23
+			?	--24
+
 		)
 		"""
 
