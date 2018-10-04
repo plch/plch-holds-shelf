@@ -99,6 +99,7 @@ class App:
 			`record_type_code` TEXT,
 			`record_num` INTEGER,
 			`item_record_location_code` TEXT,
+			`agency_code_num` INTEGER,
 			`checkin_statistics_group_code_num` INTEGER,
 			`checkin_statistics_group_name` TEXT,
 			`is_frozen` INTEGER,
@@ -158,6 +159,17 @@ class App:
 			)
 			ELSE NULL
 		END AS item_record_location_code,
+		CASE
+			WHEN r.record_type_code = 'i' THEN (
+				SELECT
+				i.agency_code_num
+				FROM
+				sierra_view.item_record as i
+				WHERE
+				i.record_id = r.id
+			)
+			ELSE NULL
+		END AS agency_code_num,
 		CASE
 			WHEN r.record_type_code = 'i' THEN (
 				SELECT
@@ -269,22 +281,23 @@ class App:
 			record_type_code,	--8
 			record_num,	--9
 			item_record_location_code,	--10
-			checkin_statistics_group_code_num, --11
-			checkin_statistics_group_name, --12
-			is_frozen,	--13
-			delay_days,	--14
-			expires_epoch,	--15
-			status,	--16
-			is_ir,	--17
-			pickup_location_code,	--18
-			is_ill,	--19
-			note,	--20
-			ir_pickup_location_code,	--21
-			ir_print_name,	--22
-			is_ir_converted_request,	--23
-			patron_records_display_order,	--24
-			records_display_order,	--25
-			modified_epoch	--26
+			agency_code_num, --11
+			checkin_statistics_group_code_num, --12
+			checkin_statistics_group_name, --13
+			is_frozen,	--14
+			delay_days,	--15
+			expires_epoch,	--16
+			status,	--17
+			is_ir,	--18
+			pickup_location_code,	--19
+			is_ill,	--20
+			note,	--21
+			ir_pickup_location_code,	--22
+			ir_print_name,	--23
+			is_ir_converted_request,	--24
+			patron_records_display_order,	--25
+			records_display_order,	--26
+			modified_epoch	--27
 		)
 
 		VALUES
@@ -314,8 +327,9 @@ class App:
 			?,	--23
 			?,	--24
 			?,	--25
-			?	--26
-		)
+			?,	--26
+			?	--27
+		);
 		"""
 
 		# create the cursor

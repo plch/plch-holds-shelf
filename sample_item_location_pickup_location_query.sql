@@ -12,6 +12,7 @@ WITH holds AS (
 
 SELECT
 holds.hold_id,
+data.record_type_code || data.record_num || 'a' AS record_num,
 data.item_record_location_code,
 data.checkin_statistics_group_name,
 data.pickup_location_code,
