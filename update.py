@@ -99,6 +99,8 @@ class App:
 			`record_type_code` TEXT,
 			`record_num` INTEGER,
 			`item_record_location_code` TEXT,
+			`checkin_statistics_group_code_num` INTEGER,
+			`checkin_statistics_group_name` TEXT,
 			`is_frozen` INTEGER,
 			`delay_days` INTEGER,
 			`expires_epoch` INTEGER,
@@ -149,15 +151,43 @@ class App:
 			WHEN r.record_type_code = 'i' THEN (
 				SELECT
 				i.location_code
-
 				FROM
 				sierra_view.item_record as i
-
 				WHERE
 				i.record_id = r.id
 			)
 			ELSE NULL
 		END AS item_record_location_code,
+		CASE
+			WHEN r.record_type_code = 'i' THEN (
+				SELECT
+				i.checkin_statistics_group_code_num
+				FROM
+				sierra_view.item_record as i
+				WHERE
+				i.record_id = r.id
+			)
+			ELSE NULL
+		END AS checkin_statistics_group_code_num,
+		CASE
+			WHEN r.record_type_code = 'i' THEN (
+				SELECT
+				n.name
+				FROM
+				sierra_view.item_record as i
+				JOIN
+				sierra_view.statistic_group as sg
+				ON
+				sg.code_num = i.checkin_statistics_group_code_num
+				JOIN
+				sierra_view.statistic_group_name as n
+				ON
+				n.statistic_group_id = sg.id
+				WHERE
+				i.record_id = r.id
+			)
+			ELSE NULL
+		END AS checkin_statistics_group_name,
 		h.is_frozen::INTEGER,
 		h.delay_days,
 		EXTRACT(EPOCH FROM h.expires_gmt)::INTEGER as expires_epoch,
@@ -172,24 +202,19 @@ class App:
 		h.patron_records_display_order,
 		h.records_display_order,
 		EXTRACT(EPOCH FROM NOW())::INTEGER as modified_epoch
-
 		FROM
 		sierra_view.hold AS h
-
 		JOIN
 		sierra_view.record_metadata as r
 		ON
 		r.id = h.record_id
-
 		JOIN
 		sierra_view.record_metadata as pr
 		ON
 		pr.id = patron_record_id
-
 		WHERE
 		h.status IN ('i', 'j', 'b')
 		;
-
 		"""			
 
 		with self.pgsql_conn as conn:
@@ -244,20 +269,22 @@ class App:
 			record_type_code,	--8
 			record_num,	--9
 			item_record_location_code,	--10
-			is_frozen,	--11
-			delay_days,	--12
-			expires_epoch,	--13
-			status,	--14
-			is_ir,	--15
-			pickup_location_code,	--16
-			is_ill,	--17
-			note,	--18
-			ir_pickup_location_code,	--19
-			ir_print_name,	--20
-			is_ir_converted_request,	--21
-			patron_records_display_order,	--22
-			records_display_order,	--23
-			modified_epoch	--24
+			checkin_statistics_group_code_num, --11
+			checkin_statistics_group_name, --12
+			is_frozen,	--13
+			delay_days,	--14
+			expires_epoch,	--15
+			status,	--16
+			is_ir,	--17
+			pickup_location_code,	--18
+			is_ill,	--19
+			note,	--20
+			ir_pickup_location_code,	--21
+			ir_print_name,	--22
+			is_ir_converted_request,	--23
+			patron_records_display_order,	--24
+			records_display_order,	--25
+			modified_epoch	--26
 		)
 
 		VALUES
@@ -285,8 +312,9 @@ class App:
 			?,	--21
 			?,	--22
 			?,	--23
-			?	--24
-
+			?,	--24
+			?,	--25
+			?	--26
 		)
 		"""
 
