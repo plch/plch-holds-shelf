@@ -87,7 +87,7 @@ class App:
 		cursor = self.sqlite_conn.cursor()
 		
 		# create the table if it doesn't exist
-		sql = """
+		sql = u"""
 		CREATE TABLE IF NOT EXISTS "data"(
 			`hold_id` INTEGER,
 			`local_hold_id` INTEGER,
@@ -98,10 +98,11 @@ class App:
 			`record_id` INTEGER,
 			`record_type_code` TEXT,
 			`record_num` INTEGER,
-			`item_record_location_code` TEXT,
+			`item_location_code` TEXT,
 			`agency_code_num` INTEGER,
 			`checkin_statistics_group_code_num` INTEGER,
 			`checkin_statistics_group_name` TEXT,
+			`s_location_code` TEXT,
 			`is_frozen` INTEGER,
 			`delay_days` INTEGER,
 			`expires_epoch` INTEGER,
@@ -131,8 +132,30 @@ class App:
 		# open the sqlfile
 		# TODO: itterate over large amounts of values, to limit the size of the query (if they get really huge)
 		# sql_string = open('base_remote_temp_local_ids.sql', mode='r', encoding='utf-8-sig').read()
-		sql = """
-		-- first, get all the holds ready for pickup currently ...
+		sql = u"""
+		--- create temp table for stat group lookups
+		DROP TABLE IF EXISTS temp_stat_groups
+		;
+
+		CREATE TEMP TABLE temp_stat_groups AS
+		SELECT
+		s.code AS s_code,
+		s.location_code AS s_location_code
+		-- s.name AS s_name,
+		-- l.name AS l_name -- the grouped location name (doesn't include `schk02` for example)
+
+		FROM
+		sierra_view.statistic_group_myuser as s
+		-- JOIN
+		-- sierra_view.location_myuser as l
+		-- ON
+		-- l.code = s.location_code
+		;
+
+		CREATE INDEX temp_stat_groups_code ON temp_stat_groups (s_code)
+		;
+		---
+
 
 		DROP TABLE IF EXISTS temp_hold_ready;
 		---
@@ -141,65 +164,19 @@ class App:
 		h.id as hold_id,
 		-- if we ever reset or rollover our IDs ... might want to be prepared for that
 		(EXTRACT(EPOCH FROM h.placed_gmt)::INTEGER::TEXT || h.id::TEXT)::BIGINT as local_hold_id,
-		MD5(CAST((h.*)AS text)) as hash_row, -- this will hash the entire hold row
+		MD5(CAST((h.*) AS TEXT)) AS hash_row, -- this will hash the entire hold row, so we can tell if it's different next time we try to insert it
 		EXTRACT(EPOCH FROM h.placed_gmt)::INTEGER AS placed_epoch,
 		h.patron_record_id,
 		pr.record_num AS patron_record_num,
 		h.record_id,
 		r.record_type_code,
 		r.record_num,
-		CASE
-			WHEN r.record_type_code = 'i' THEN (
-				SELECT
-				i.location_code
-				FROM
-				sierra_view.item_record as i
-				WHERE
-				i.record_id = r.id
-			)
-			ELSE NULL
-		END AS item_record_location_code,
-		CASE
-			WHEN r.record_type_code = 'i' THEN (
-				SELECT
-				i.agency_code_num
-				FROM
-				sierra_view.item_record as i
-				WHERE
-				i.record_id = r.id
-			)
-			ELSE NULL
-		END AS agency_code_num,
-		CASE
-			WHEN r.record_type_code = 'i' THEN (
-				SELECT
-				i.checkin_statistics_group_code_num
-				FROM
-				sierra_view.item_record as i
-				WHERE
-				i.record_id = r.id
-			)
-			ELSE NULL
-		END AS checkin_statistics_group_code_num,
-		CASE
-			WHEN r.record_type_code = 'i' THEN (
-				SELECT
-				n.name
-				FROM
-				sierra_view.item_record as i
-				JOIN
-				sierra_view.statistic_group as sg
-				ON
-				sg.code_num = i.checkin_statistics_group_code_num
-				JOIN
-				sierra_view.statistic_group_name as n
-				ON
-				n.statistic_group_id = sg.id
-				WHERE
-				i.record_id = r.id
-			)
-			ELSE NULL
-		END AS checkin_statistics_group_name,
+		i.location_code as item_location_code,
+		i.agency_code_num,
+		i.checkin_statistics_group_code_num,
+		s.s_location_code,
+		-- s.s_name,
+		-- s.l_name,
 		h.is_frozen::INTEGER,
 		h.delay_days,
 		EXTRACT(EPOCH FROM h.expires_gmt)::INTEGER as expires_epoch,
@@ -224,6 +201,15 @@ class App:
 		sierra_view.record_metadata as pr
 		ON
 		pr.id = patron_record_id
+		LEFT OUTER JOIN
+		sierra_view.item_record as i
+		ON
+		i.record_id = r.id
+		AND r.record_type_code = 'i' -- there might be an off chance that record is not item
+		LEFT OUTER JOIN
+		temp_stat_groups as s
+		ON
+		s.s_code = i.checkin_statistics_group_code_num
 		WHERE
 		h.status IN ('i', 'j', 'b')
 		;
@@ -251,6 +237,7 @@ class App:
 					cursor_factory=psycopg2.extras.NamedTupleCursor)
 			cursor.itersize = self.itersize # sets the itersize
 			cursor.execute('SELECT * FROM temp_hold_ready;')
+			# cursor.execute('SELECT * FROM temp_stat_groups;')
 
 			rows = None
 			while True:
@@ -259,6 +246,8 @@ class App:
 					break
 
 				for row in rows:
+					# debug
+					# pdb.set_trace()
 					yield row
 
 			cursor.close()
@@ -280,10 +269,10 @@ class App:
 			record_id,	--7
 			record_type_code,	--8
 			record_num,	--9
-			item_record_location_code,	--10
+			item_location_code,	--10
 			agency_code_num, --11
 			checkin_statistics_group_code_num, --12
-			checkin_statistics_group_name, --13
+			s_location_code,	--13
 			is_frozen,	--14
 			delay_days,	--15
 			expires_epoch,	--16
@@ -341,11 +330,15 @@ class App:
 
 			# do the insert
 			cursor.execute(sql, list(value for value in row))
+			# debug
+			# pdb.set_trace()
 
 			# commit values to the local database every self.itersize times through
 			if(row_counter % self.itersize == 0):
 				self.sqlite_conn.commit()
-				print(row)
+				# debug
+				# pdb.set_trace()
+				# print(row)
 			else:
 				pass
 
